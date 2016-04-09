@@ -24,25 +24,26 @@ class FFNN(object):
     """
     def __init__(self, n_inputs, n_hidden, n_outputs, **kwargs):
         property_defaults = {
-            'n_epochs': 100,
-            'print_every': 10,
-            'reg': .01,
+            'epochs': 1000,
+            'print_every': 100,
+            'reg': .1,
             'alpha': .01,
             'batch': 0
         }
         for (prop, default) in property_defaults.items():
             setattr(self, prop, kwargs.get(prop, default))
-        self.arch = [n_input] + n_hidden + [n_outputs]
+        self.arch = [n_inputs] + n_hidden + [n_outputs]
 
         X = T.dmatrix('X')
         y = T.dmatrix('y') # one-hot outputs
 
         # Weights and biases
-        noise = 1/np.sqrt(n_inputs*n_hidden*n_outputs)
-        self.W1 = theano.shared(noise*np.random.randn(n_inputs,n_hidden),
+        # TODO: extend to multiple hidden layers!
+        noise = 1/np.sqrt(n_inputs*n_hidden[0]*n_outputs)
+        self.W1 = theano.shared(noise*np.random.randn(n_inputs,n_hidden[0]),
                                 name='W1')
-        self.b1 = theano.shared(np.zeros(n_hidden), name='b1')
-        self.W2 = theano.shared(n*np.random.randn(n_hidden,n_outputs),
+        self.b1 = theano.shared(np.zeros(n_hidden[0]), name='b1')
+        self.W2 = theano.shared(noise*np.random.randn(n_hidden[0],n_outputs),
                                 name='W2')
         self.b2 = theano.shared(np.zeros(n_outputs), name='b2')
 
@@ -53,7 +54,7 @@ class FFNN(object):
         output = T.nnet.softmax(z2)
         prediction = np.argmax(output,axis=1)
         crossentropy = T.nnet.categorical_crossentropy(output,y).mean()
-        regularization = reg*((self.W1**2).sum()+(self.W2**2).sum())
+        regularization = self.reg*((self.W1**2).sum()+(self.W2**2).sum())
         cost = crossentropy + regularization
 
         # gradients
@@ -61,7 +62,7 @@ class FFNN(object):
         updates = ((self.W1,self.W1-self.alpha*gW1),
                    (self.b1,self.b1-self.alpha*gb1),
                    (self.W2,self.W2-self.alpha*gW2),
-                   (self.b2,self.b2-self.alpha*gb2)))
+                   (self.b2,self.b2-self.alpha*gb2))
 
         # build theano functions for gradient descent and model tuning
         self.epoch = theano.function(inputs = [X,y],
@@ -99,6 +100,7 @@ class FFNN(object):
                     rows = list(range(ind,min(ind+self.batch,n_samples)))
                     run_epoch(X_data[rows,:],y_data[rows,:])
                 np.random.shuffle(arr) # reduces bias in training
+        return costs
 
     def accuracy(self,X_data,y_data):
         """ Compute model accuracy.  If you send in the same dataset as
@@ -116,9 +118,9 @@ class FFNN(object):
 
         n_samples = len(X_data)
 
-        I = np.identity(self.n_outputs)
+        I = np.identity(self.arch[-1])
         preds = np.array([I[i] for i in self.predict(X_data)])
         wrong = (preds != y_data).sum() / 2
 
-        score = (n_samples*1.0 - total_wrong)/n_samples
-        return total_wrong, score
+        score = (n_samples*1.0 - wrong)/n_samples
+        return wrong, score
