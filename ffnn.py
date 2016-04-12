@@ -5,16 +5,47 @@ import numpy as np
 import theano
 import theano.tensor as T
 
+class Layer(object):
+    """ A hidden layer in a traditional (feedforward) neural network.
+    In common notation, take in a batch of a_(i-1)'s (the output
+    of the previous layer) and return a batch of a_i's.
+
+
+    Params:
+        n_inputs -- int, number of nodes in the previous layer
+        n_hidden -- int, number of nodes in the hidden layer
+        inputs -- Theano.dmatrix, stores the inputs so that FFNN
+                      can string all the layers together.  In common
+                      notation, these are a_(i-1) for the batch.
+        layer -- int, which layer this is. For theano naming purposes.
+        nonlin -- type 'theano.tensor.elemwise.Elemwise' or 'function'.
+                      This is the choice of nonlinearity for the output
+                      of this layer, default is ReLU. Other common
+                      options include:
+                      theano.tensor.tanh
+                      theano.tensor.nnet.sigmoid
+    """
+    def __init__(self, n_inputs, n_hidden, inputs, layer,
+                 nonlin=T.nnet.relu):
+        noise = 1/np.sqrt(n_inputs*n_hidden)
+        self.W = theano.shared(noise*np.random.randn(n_input{s,n_hidden),
+                                name='W{}'.format(layer))
+        self.b = theano.shared(np.zeros(n_hidden),
+                               name='b{}'.format(layer))
+
+        self.output = nonlin(X.dot(self.W)+self.b)
+
+
 class FFNN(object):
-    """ A traditional (feedforward) neural network, with a variable number
-    of hidden layers.
+    """ A traditional (feedforward) neural network, with a variable
+    number of hidden layers.
 
     Params:
         n_inputs -- int, number of nodes in the input layer
         n_outputs -- int, number of nodes in the output layer
         n_hidden -- array of ints, number of nodes in each hidden layer
-        batch -- int the size of the minibatch used in SGD.  The default is
-                    0, corresponding to standard GD.
+        batch -- int the size of the minibatch used in SGD.  The default
+                     s 0, corresponding to standard GD.
         reg -- float, the regularization parameter
         alpha -- float, the learning rate
         n_epochs -- int, number of training epochs, that is, iterations
@@ -38,7 +69,7 @@ class FFNN(object):
         y = T.dmatrix('y') # one-hot outputs
 
         # Weights and biases
-        noise = 1/np.sqrt(n_inputs*n_hidden*n_outputs)
+        noise = 1/np.sqrt(n_inputs*n_hidden)
         self.W1 = theano.shared(noise*np.random.randn(n_inputs,n_hidden),
                                 name='W1')
         self.b1 = theano.shared(np.zeros(n_hidden), name='b1')
