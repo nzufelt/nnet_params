@@ -13,24 +13,28 @@ class Layer(object):
 
     Params:
         n_inputs -- int, number of nodes in the previous layer
-        n_hidden -- int, number of nodes in the hidden layer
+        n_nodes -- int, number of nodes in the current layer
         inputs -- Theano.dmatrix, stores the inputs so that FFNN
                       can string all the layers together.  In common
                       notation, these are a_(i-1) for the batch.
         layer -- int, which layer this is. For theano naming purposes.
+        noise_scale -- float, scaling parameter for the amount of
+                           initialized noise for weights.  Larger
+                           values correspond to more noise.
         nonlin -- type 'theano.tensor.elemwise.Elemwise' or 'function'.
                       This is the choice of nonlinearity for the output
                       of this layer, default is ReLU. Other common
                       options include:
                       theano.tensor.tanh
                       theano.tensor.nnet.sigmoid
+                      T.nnet.softmax (for output layer)
     """
-    def __init__(self, n_inputs, n_hidden, inputs, layer,
-                 nonlin=T.nnet.relu):
-        noise = 1/np.sqrt(n_inputs*n_hidden)
-        self.W = theano.shared(noise*np.random.randn(n_input{s,n_hidden),
-                                name='W{}'.format(layer))
-        self.b = theano.shared(np.zeros(n_hidden),
+    def __init__(self, n_inputs, n_node, inputs, layer,
+                 noise_scale, nonlin=T.nnet.relu):
+        noise = noise_scale/np.sqrt(n_inputs*n_nodes)
+        self.W = theano.shared(noise*np.random.randn(n_inputs,n_nodes),
+                               name='W{}'.format(layer))
+        self.b = theano.shared(np.zeros(n_nodes),
                                name='b{}'.format(layer))
 
         self.output = nonlin(X.dot(self.W)+self.b)
@@ -48,6 +52,9 @@ class FFNN(object):
                      s 0, corresponding to standard GD.
         reg -- float, the regularization parameter
         alpha -- float, the learning rate
+        noise_scale -- float, scaling parameter for the amount of
+                           initialized noise for weights.  Larger
+                           values correspond to more noise.
         n_epochs -- int, number of training epochs, that is, iterations
                         through the entire training set.
         print_every -- int, print the error after this many epochs
@@ -60,39 +67,40 @@ class FFNN(object):
             'reg': .01,
             'alpha': .01,
             'batch': 0
+            'noise_scale': 1.0
         }
         for (prop, default) in property_defaults.items():
             setattr(self, prop, kwargs.get(prop, default))
         self.arch = [n_input] + n_hidden + [n_outputs]
+        final = len(self.arch) - 1  # the true "number of layers"
 
         X = T.dmatrix('X')
         y = T.dmatrix('y') # one-hot outputs
 
-        # Weights and biases
-        noise = 1/np.sqrt(n_inputs*n_hidden)
-        self.W1 = theano.shared(noise*np.random.randn(n_inputs,n_hidden),
-                                name='W1')
-        self.b1 = theano.shared(np.zeros(n_hidden), name='b1')
-        self.W2 = theano.shared(n*np.random.randn(n_hidden,n_outputs),
-                                name='W2')
-        self.b2 = theano.shared(np.zeros(n_outputs), name='b2')
+        # Construct layers
+        layer_outputs,parameters,weights = [X],[],[]
+        for index, layer in enumerate(n_hidden+[n_outputs]):
+            nonlin = T.nnet.softmax if index == final-1 else T.nnet.relu
+            layer = Layer(n_inputs=self.arch[index],
+                          n_nodes=self.arch[index+1],
+                          inputs=layers[index][0],
+                          layer=index+1,
+                          noise_scale=noise_scale,
+                          nonlin=nonlin)
+            layer_outputs.append(layer.output)
+            parameters.extend([layer.W,layer.b])
+            weights.append(layer.W)
 
-        # Feedforward
-        z1 = X.dot(self.W1)+self.b1
-        hidden = T.tanh(z1)
-        z2 = hidden.dot(self.W2) + self.b2
-        output = T.nnet.softmax(z2)
+        # Expressions for building theano functions
+        output = layer_outputs[-1]
         prediction = np.argmax(output,axis=1)
         crossentropy = T.nnet.categorical_crossentropy(output,y).mean()
-        regularization = reg*((self.W1**2).sum()+(self.W2**2).sum())
+        regularization = reg * sum([(W**2).sum() for W in weights])
         cost = crossentropy + regularization
 
         # gradients
-        gW1,gb1,gW2,gb2 = T.grad(cost,[self.W1,self.b1,self.W2,self.b2])
-        updates = ((self.W1,self.W1-self.alpha*gW1),
-                   (self.b1,self.b1-self.alpha*gb1),
-                   (self.W2,self.W2-self.alpha*gW2),
-                   (self.b2,self.b2-self.alpha*gb2)))
+        grads = T.grad(cost,parameters)
+        updates = [p,p - self.alpha*g for p,g in zip(parameters,grads]
 
         # build theano functions for gradient descent and model tuning
         self.epoch = theano.function(inputs = [X,y],
