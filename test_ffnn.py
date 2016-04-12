@@ -2,7 +2,7 @@ from ffnn import FFNN
 import numpy as np
 from sklearn.datasets import make_moons
 
-nn = FFNN(2,[5],2)
+nn = FFNN(2,[5],2,noise_scale=.1)
 
 I = np.identity(2)
 X_data,y = make_moons(200,.17)

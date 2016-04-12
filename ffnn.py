@@ -4,6 +4,7 @@ Implement a feedforward neural network using theano
 import numpy as np
 import theano
 import theano.tensor as T
+from theano.tensor.nnet import categorical_crossentropy
 
 class Layer(object):
     """ A hidden layer in a traditional (feedforward) neural network.
@@ -29,7 +30,7 @@ class Layer(object):
                       theano.tensor.nnet.sigmoid
                       T.nnet.softmax (for output layer)
     """
-    def __init__(self, n_inputs, n_node, inputs, layer,
+    def __init__(self, n_inputs, n_nodes, inputs, layer,
                  noise_scale, nonlin=T.nnet.relu):
         noise = noise_scale/np.sqrt(n_inputs*n_nodes)
         self.W = theano.shared(noise*np.random.randn(n_inputs,n_nodes),
@@ -37,7 +38,7 @@ class Layer(object):
         self.b = theano.shared(np.zeros(n_nodes),
                                name='b{}'.format(layer))
 
-        self.output = nonlin(X.dot(self.W)+self.b)
+        self.output = nonlin(inputs.dot(self.W)+self.b)
 
 
 class FFNN(object):
@@ -59,15 +60,19 @@ class FFNN(object):
                         through the entire training set.
         print_every -- int, print the error after this many epochs
                            while training. Set to 0 to turn off.
+        nonlin -- Theano function, used to determine the 
+                             nonlinearity/activation of the hidden
+                             layers.  See Layer for more info.
     """
     def __init__(self, n_inputs, n_hidden, n_outputs, **kwargs):
         property_defaults = {
             'epochs': 1000,
             'print_every': 100,
-            'reg': .1,
+            'reg': ..001,
             'alpha': .01,
-            'batch': 0
-            'noise_scale': 1.0
+            'batch': 0,
+            'noise_scale': 1.0,
+            'nonlin': T.nnet.relu
         }
         for (prop, default) in property_defaults.items():
             setattr(self, prop, kwargs.get(prop, default))
@@ -75,40 +80,43 @@ class FFNN(object):
         self.arch = [n_inputs] + n_hidden + [n_outputs]
         final = len(self.arch) - 1  # the true "number of layers"
 
-        X = T.dmatrix('X')
-        y = T.dmatrix('y') # one-hot outputs
+        self.X = T.dmatrix('X')
+        self.y = T.dmatrix('y') # one-hot outputs
 
         # Construct layers
-        layer_outputs,parameters,weights = [X],[],[]
+        layer_outputs,self.parameters,weights = [self.X],[],[]
         for index, layer in enumerate(n_hidden+[n_outputs]):
-            nonlin = T.nnet.softmax if index == final-1 else T.nnet.relu
+            nonlin = T.nnet.softmax if index == final-1 else self.nonlin
             layer = Layer(n_inputs=self.arch[index],
                           n_nodes=self.arch[index+1],
-                          inputs=layers[index][0],
+                          inputs=layer_outputs[index],
                           layer=index+1,
-                          noise_scale=noise_scale,
+                          noise_scale=self.noise_scale,
                           nonlin=nonlin)
             layer_outputs.append(layer.output)
-            parameters.extend([layer.W,layer.b])
+            self.parameters.extend([layer.W,layer.b])
             weights.append(layer.W)
 
         # Expressions for building theano functions
         output = layer_outputs[-1]
         prediction = np.argmax(output,axis=1)
-        crossentropy = T.nnet.categorical_crossentropy(output,y).mean()
-        regularization = reg * sum([(W**2).sum() for W in weights])
+        crossentropy = categorical_crossentropy(output,self.y).mean()
+        regularization = self.reg * sum([(W**2).sum() for W in weights])
         cost = crossentropy + regularization
 
         # gradients
-        grads = T.grad(cost,parameters)
-        updates = [p,p - self.alpha*g for p,g in zip(parameters,grads]
+        grads = T.grad(cost,self.parameters)
+        updates = [(p,p - self.alpha*g) for p,g in zip(self.parameters,
+                                                       grads)]
 
         # build theano functions for gradient descent and model tuning
-        self.epoch = theano.function(inputs = [X,y],
+        self.epoch = theano.function(inputs = [self.X,self.y],
                                      outputs = [],
                                      updates = updates)
-        self.count_cost = theano.function(inputs = [X,y],outputs = cost)
-        self.predict = theano.function(inputs=[X],outputs=prediction)
+        self.count_cost = theano.function(inputs = [self.X,self.y],
+                                          outputs = cost)
+        self.predict = theano.function(inputs=[self.X],
+                                       outputs=prediction)
 
     def fit(self,X_data,y_data):
         """ Fit the model. Performs standard or batch gradient descent.
