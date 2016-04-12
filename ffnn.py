@@ -62,16 +62,17 @@ class FFNN(object):
     """
     def __init__(self, n_inputs, n_hidden, n_outputs, **kwargs):
         property_defaults = {
-            'n_epochs': 100,
-            'print_every': 10,
-            'reg': .01,
+            'epochs': 1000,
+            'print_every': 100,
+            'reg': .1,
             'alpha': .01,
             'batch': 0
             'noise_scale': 1.0
         }
         for (prop, default) in property_defaults.items():
             setattr(self, prop, kwargs.get(prop, default))
-        self.arch = [n_input] + n_hidden + [n_outputs]
+
+        self.arch = [n_inputs] + n_hidden + [n_outputs]
         final = len(self.arch) - 1  # the true "number of layers"
 
         X = T.dmatrix('X')
@@ -138,6 +139,7 @@ class FFNN(object):
                     rows = list(range(ind,min(ind+self.batch,n_samples)))
                     run_epoch(X_data[rows,:],y_data[rows,:])
                 np.random.shuffle(arr) # reduces bias in training
+        return costs
 
     def accuracy(self,X_data,y_data):
         """ Compute model accuracy.  If you send in the same dataset as
@@ -155,9 +157,9 @@ class FFNN(object):
 
         n_samples = len(X_data)
 
-        I = np.identity(self.n_outputs)
+        I = np.identity(self.arch[-1])
         preds = np.array([I[i] for i in self.predict(X_data)])
         wrong = (preds != y_data).sum() / 2
 
-        score = (n_samples*1.0 - total_wrong)/n_samples
-        return total_wrong, score
+        score = (n_samples*1.0 - wrong)/n_samples
+        return wrong, score
